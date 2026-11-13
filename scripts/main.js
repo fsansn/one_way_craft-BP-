@@ -1,29 +1,35 @@
 import * as server from "@minecraft/server";
 
 // =======================
-// Version 0.2.0
+// Version 0.3.0
 //
 // Changed
-// - 廃止：岩盤によるデッドライン・側面壁の生成
-// - 廃止：水・海草・昆布の除去
-// - 変更：デッドラインを越えたプレイヤーを毎tickテレポート
+// - デッドラインを毎tick 0.005ブロックずつ前進させる方式に変更
+// - プレイヤーの前進に合わせたデッドラインの追随を小数座標に対応
+// - パーティクルを毎tick更新
+// - スコア計算・スコア表示を撤廃
+// - 死亡時は到達距離・生存時間・レベルを表示
 // =======================
 
 const SAFE_DISTANCE = 30;
 
-const DARK_INTERVAL = 200;
-const WARNING_INTERVAL = Math.floor(DARK_INTERVAL / 2);
+// 1tick（0.05秒）ごとに0.005ブロック前進。
+// 10秒あたり1ブロックで、従来の平均速度を維持する。
+const DEADLINE_SPEED = 0.005;
+
+// 最初の予告タイトルを表示するまでの時間（5秒）
+const FIRST_WARNING_TICKS = 100;
 
 const WARNING_PARTICLE = "minecraft:dragon_breath_trail";
 const WARNING_RADIUS = 2;
 
 // 状態
 let deadline = null;
-let tick = 0;
-let gameScore = 0;
-let lastPlayerZ = null;
 let gameOver = false;
-let maxDistance = 0;
+
+let startZ = null;
+let maxDistanceZ = null;
+let elapsedTicks = 0;
 
 let resultTitle = "";
 let resultSub = "";
@@ -33,39 +39,9 @@ let firstWarningShown = false;
 
 // =======================
 
-function getTotalXp(player) {
-    const level = player.level;
-
-    if (level <= 16)
-        return level * level + 6 * level;
-
-    if (level <= 31)
-        return Math.floor(
-            2.5 * level * level
-            - 40.5 * level
-            + 360
-        );
-
-    return Math.floor(
-        4.5 * level * level
-        - 162.5 * level
-        + 2220
-    );
-}
-
-// =======================
-
-function updateScore(player) {
-    gameScore += getTotalXp(player);
-    player.onScreenDisplay.setActionBar(`§6Score: ${gameScore}`);
-}
-
-// =======================
-
 function showOpening(player) {
     if (openingShown)
         return;
-
     openingShown = true;
 
     player.onScreenDisplay.setTitle(
@@ -84,7 +60,6 @@ function showFirstWarning(player) {
         return;
 
     firstWarningShown = true;
-
     player.onScreenDisplay.setTitle(
         "§5闇が迫る",
         {
@@ -97,6 +72,16 @@ function showFirstWarning(player) {
 }
 
 // =======================
+// 死亡時の結果表示
+// =======================
+
+function formatElapsedTime(ticks) {
+    const totalSeconds = Math.floor(ticks / 20);
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+
+    return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+}
 
 function showResult(player) {
     player.onScreenDisplay.setTitle(
@@ -116,17 +101,19 @@ function finishRun(player) {
 
     gameOver = true;
 
-    resultTitle = `§6Score: ${gameScore}`;
-    resultSub = `§aLevel: ${player.level}`;
+    const distance = Math.max(0, maxDistanceZ - startZ);
+    resultTitle = `§6到達距離: ${distance.toFixed(1)}ブロック`;
+    resultSub = `§a生存時間: ${formatElapsedTime(elapsedTicks)}  |  Level: ${player.level}`;
 
     showResult(player);
 }
 
 // =======================
-// 闇の予告演出
+// デッドラインの位置に予告パーティクルを表示
+// 毎tick更新して滑らかに移動させる
 // =======================
 
-function showWarning(player) {
+function showDeadlineParticles(player) {
     const px = Math.floor(player.location.x);
     const py = Math.floor(player.location.y) + 1;
     const z = deadline + 1;
@@ -193,62 +180,47 @@ server.system.runInterval(() => {
         return;
     }
 
-    // 初回
+    // 初回：プレイヤーの30ブロック後方にデッドラインを設定
     if (deadline === null) {
-        const z = Math.floor(player.location.z);
-
-        deadline = z - SAFE_DISTANCE;
-        lastPlayerZ = z;
-        maxDistance = z;
+        startZ = player.location.z;
+        maxDistanceZ = startZ;
+        deadline = startZ - SAFE_DISTANCE;
 
         showOpening(player);
         return;
     }
 
-    // 最も前方にいるプレイヤーの位置を基準にデッドラインを進める
-    let furthestZ = Math.floor(player.location.z);
+    elapsedTicks++;
+
+    // 最も前方にいるプレイヤーのZ座標を取得
+    let furthestZ = player.location.z;
 
     for (const currentPlayer of players) {
-        const z = Math.floor(currentPlayer.location.z);
+        const z = currentPlayer.location.z;
 
         if (z > furthestZ)
             furthestZ = z;
     }
 
-    if (furthestZ > maxDistance)
-        maxDistance = furthestZ;
+    if (furthestZ > maxDistanceZ)
+        maxDistanceZ = furthestZ;
 
-    // プレイヤーが前進し、安全距離が広がった場合はデッドラインを追随させる
-    if (furthestZ !== lastPlayerZ) {
-        lastPlayerZ = furthestZ;
+    // プレイヤーが前進した場合、デッドラインも安全距離を保って追随
+    // 小数座標をそのまま使用し、整数座標への丸めを行わない
+    const target = furthestZ - SAFE_DISTANCE;
 
-        const target = furthestZ - SAFE_DISTANCE;
+    if (target > deadline)
+        deadline = target;
 
-        while (deadline < target)
-            deadline++;
-    }
+    // デッドラインを毎tick少しずつ前進させる
+    deadline += DEADLINE_SPEED;
 
-    // 侵食予告
-    if (tick === WARNING_INTERVAL) {
+    // 開始から5秒後に最初の警告タイトルを表示
+    if (elapsedTicks >= FIRST_WARNING_TICKS)
         showFirstWarning(player);
-    }
 
-    if (
-        tick >= WARNING_INTERVAL
-        && tick < DARK_INTERVAL
-        && tick % 10 === 0
-    ) {
-        showWarning(player);
-    }
-
-    // 侵食
-    tick++;
-
-    if (tick >= DARK_INTERVAL) {
-        tick = 0;
-        deadline++;
-        updateScore(player);
-    }
+    // デッドラインの位置を毎tickパーティクルで表示
+    showDeadlineParticles(player);
 
     // 全プレイヤーを毎tickチェック。ラインより後方なら即座に前方へ戻す
     enforceDeadline(players);
