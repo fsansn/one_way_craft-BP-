@@ -137,6 +137,7 @@ function showDeadlineParticles(player) {
 // X・Y座標は維持し、Z座標だけを変更する
 // =======================
 
+
 function enforceDeadline(players) {
     for (const player of players) {
         const location = player.location;
@@ -148,11 +149,15 @@ function enforceDeadline(players) {
                     y: location.y,
                     z: deadline + 1
                 });
+
+                // 強制テレポート時にエンダーパールの効果音を再生
+                player.playSound("mob.endermen.portal");
             }
             catch {}
         }
     }
 }
+
 
 // =======================
 
