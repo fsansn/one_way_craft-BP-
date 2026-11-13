@@ -113,27 +113,24 @@ function finishRun(player) {
 // 毎tick更新して滑らかに移動させる
 // =======================
 
-function showDeadlineParticles(player) {
-    const px = Math.floor(player.location.x);
-    const py = Math.floor(player.location.y) + 1;
-    const z = deadline + 1;
 
-    for (let ox = -WARNING_RADIUS; ox <= WARNING_RADIUS; ox++) {
-        for (let oy = -WARNING_RADIUS; oy <= WARNING_RADIUS; oy++) {
-            try {
-                player.dimension.spawnParticle(
-                    WARNING_PARTICLE,
-                    {
-                        x: px + ox,
-                        y: py + oy,
-                        z
-                    }
-                );
-            }
-            catch {}
-        }
+function showDeadlineParticles(player) {
+    const location = player.location;
+
+    // プレイヤー周辺のランダムな位置に1個だけ表示
+    const x = location.x + (Math.random() * 2 - 1) * WARNING_RADIUS;
+    const y = location.y + 1 + (Math.random() * 2 - 1) * WARNING_RADIUS;
+    const z = deadline;
+
+    try {
+        player.dimension.spawnParticle(
+            WARNING_PARTICLE,
+            { x, y, z }
+        );
     }
+    catch {}
 }
+
 
 // =======================
 // デッドラインより後方にいるプレイヤーを前方へ戻す
