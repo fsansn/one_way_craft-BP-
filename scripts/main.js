@@ -11,17 +11,18 @@ import * as server from "@minecraft/server";
 // - 死亡時は到達距離・生存時間・レベルを表示
 // =======================
 
-const SAFE_DISTANCE = 30;
+const SAFE_DISTANCE = 60;
 
-// 1tick（0.05秒）ごとに0.005ブロック前進。
-// 10秒あたり1ブロックで、従来の平均速度を維持する。
-const DEADLINE_SPEED = 0.005;
+// 1tick（0.05秒）ごとに0.05ブロック前進。
+// 1秒あたり1ブロック。
+const DEADLINE_SPEED = 0.05;
 
 // 最初の予告タイトルを表示するまでの時間（5秒）
 const FIRST_WARNING_TICKS = 100;
 
 const WARNING_PARTICLE = "minecraft:dragon_breath_trail";
-const WARNING_RADIUS = 2;
+const WARNING_RADIUS = 5;
+const FRONTLINE_PARTICLE = "minecraft:endrod";
 
 // 状態
 let deadline = null;
@@ -127,8 +128,13 @@ function showDeadlineParticles(player) {
             WARNING_PARTICLE,
             { x, y, z }
         );
+        player.dimension.spawnParticle(
+            FRONTLINE_PARTICLE,
+            { x, y, z:z + SAFE_DISTANCE }
+        );
     }
     catch {}
+    
 }
 
 
