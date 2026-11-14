@@ -21,7 +21,7 @@ const DEADLINE_SPEED = 0.05;
 const FIRST_WARNING_TICKS = 100;
 
 const WARNING_PARTICLE = "minecraft:dragon_breath_trail";
-const WARNING_RADIUS = 5;
+const WARNING_RADIUS = 16;
 const FRONTLINE_PARTICLE = "minecraft:endrod";
 
 // 状態
@@ -118,10 +118,15 @@ function finishRun(player) {
 function showDeadlineParticles(player) {
     const location = player.location;
 
-    // プレイヤー周辺のランダムな位置に1個だけ表示
-    const x = location.x + (Math.random() * 2 - 1) * WARNING_RADIUS;
-    const y = location.y + 1 + (Math.random() * 2 - 1) * WARNING_RADIUS;
-    const z = deadline;
+// プレイヤー周辺のランダムな位置に1個だけ表示（中央寄りに偏らせる）
+const randomOffset = () => {
+    const random = Math.random() * 2 - 1;
+    return Math.sign(random) * random * random * WARNING_RADIUS;
+};
+
+const x = location.x + randomOffset();
+const y = location.y + 1 + randomOffset();
+const z = deadline;
 
     try {
         player.dimension.spawnParticle(
